@@ -57,7 +57,7 @@ void disconnectToSIP(int sip_conn) {
     printf("[SIP]<disconnectToSIP> connection to SON is closed\n");
 }
 
-int main() {
+int main(void) {
     //用于丢包率的随机数种子
     srand(time(NULL));
 
@@ -75,7 +75,7 @@ int main() {
     char hostname[50];
     printf("Enter server name to connect:");
     scanf("%s", hostname);
-    int server_nodeID = topology_getNodeIDfromname(hostname);
+    int server_nodeID = topology_getNodeIDfromname(hostname, NULL);
     if (server_nodeID == -1) {
         printf("host name error!\n");
         exit(1);

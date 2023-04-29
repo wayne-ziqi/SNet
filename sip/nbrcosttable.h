@@ -12,19 +12,24 @@ typedef struct neighborcostentry {
 	unsigned int cost;	    //到该邻居的直接链路代价
 } nbr_cost_entry_t;
 
+typedef struct neighborcost{
+    int nbr_num;
+    nbr_cost_entry_t *nbrs;
+}nbr_cost_t;
+
 //这个函数动态创建邻居代价表并使用邻居节点ID和直接链路代价初始化该表.
 //邻居的节点ID和直接链路代价提取自文件topology.dat.
-nbr_cost_entry_t* nbrcosttable_create();
+nbr_cost_t * nbrcosttable_create(void);
 
 //这个函数删除邻居代价表.
 //它释放所有用于邻居代价表的动态分配内存.
-void nbrcosttable_destroy(nbr_cost_entry_t* nct);
+void nbrcosttable_destroy(nbr_cost_t * nct);
 
 //这个函数用于获取邻居的直接链路代价.
 //如果邻居节点在表中发现,就返回直接链路代价.否则返回INFINITE_COST.
-unsigned int nbrcosttable_getcost(nbr_cost_entry_t* nct, int nodeID);
+unsigned int nbrcosttable_getcost(nbr_cost_t * nct, int nodeID);
 
 //这个函数打印邻居代价表的内容.
-void nbrcosttable_print(nbr_cost_entry_t* nct); 
+void nbrcosttable_print(nbr_cost_t * nct);
 
 #endif

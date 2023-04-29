@@ -11,6 +11,7 @@
 
 #define MAX_HOSTNAME_LEN 32
 #define MAX_HOST_NUM 128
+#define iterate_topo_nbr(node, it) for(nbr_node_t *it = node->nbr_list->next; it; it = it->next)
 struct topo_node;
 
 typedef struct nbr_node {

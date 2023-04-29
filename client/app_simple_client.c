@@ -35,7 +35,7 @@
 #define WAITTIME 5
 
 //这个函数连接到本地SIP进程的端口SIP_PORT. 如果TCP连接失败, 返回-1. 连接成功, 返回TCP套接字描述符, STCP将使用该描述符发送段.
-int connectToSIP() {
+int connectToSIP(void) {
     struct sockaddr_in servAddr;
     bzero(&servAddr, sizeof servAddr);
     servAddr.sin_family = AF_INET;
@@ -77,7 +77,7 @@ int main(void) {
 	char hostname[50];
 	printf("Enter server name to connect:");
 	scanf("%s",hostname);
-	int server_nodeID = topology_getNodeIDfromname(hostname);
+	int server_nodeID = topology_getNodeIDfromname(hostname, NULL);
 	if(server_nodeID == -1) {
 		printf("host name error!\n");
 		exit(1);

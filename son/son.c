@@ -133,6 +133,18 @@ void *listen_to_neighbor(void *arg) {
             wait_nt(nt);
             removeEntry(nt, nbr);
             leave_nt(nt);
+            // TODO: should we generate an sip_pkt to inform sip?
+            pkt_routeupdate_t nbrLoss;
+            nbrLoss.entryNum = 1;
+            nbrLoss.entry[0].nodeID = nbr->nodeID;
+            nbrLoss.entry[0].cost = INFINITE_COST;
+            sipPkt.header.type = ROUTE_UPDATE;
+            sipPkt.header.src_nodeID = nbr->nodeID;
+            sipPkt.header.dst_nodeID = BROADCAST_NODEID;
+            sipPkt.header.length = (unsigned short) (sizeof(nbrLoss.entryNum) +
+                                                     nbrLoss.entryNum * sizeof(routeupdate_entry_t));
+            memcpy(sipPkt.data, &nbrLoss, sipPkt.header.length);
+            forwardpktToSIP(&sipPkt, sip_conn);
             break;
         }
         if (forwardpktToSIP(&sipPkt, sip_conn) < 0) {

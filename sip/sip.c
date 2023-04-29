@@ -34,11 +34,17 @@
 /**************************************************************/
 int son_conn;            //到重叠网络的连接
 int stcp_conn;            //到STCP的连接
-nbr_cost_entry_t *nct;            //邻居代价表
-dv_t *dv;                //距离矢量表
+nbr_cost_t *nct;            //邻居代价表
+dv_tab *dv;                //距离矢量表
 pthread_mutex_t *dv_mutex;        //距离矢量表互斥量
 routingtable_t *routingtable;        //路由表
 pthread_mutex_t *routingtable_mutex;    //路由表互斥量
+
+#define LOCK_DV pthread_mutex_lock(dv_mutex)
+#define UNLOCK_DV pthread_mutex_unlock(dv_mutex)
+#define LOCK_ROUTE pthread_mutex_lock(routingtable_mutex)
+#define UNLOCK_ROUTE pthread_mutex_unlock(routingtable_mutex)
+
 
 /**************************************************************/
 //实现SIP的函数
@@ -68,14 +74,21 @@ int connectToSON(void) {
 //这个线程每隔ROUTEUPDATE_INTERVAL时间发送路由更新报文.路由更新报文包含这个节点
 //的距离矢量.广播是通过设置SIP报文头中的dest_nodeID为BROADCAST_NODEID,并通过son_sendpkt()发送报文来完成的.
 void *routeupdate_daemon(void *arg) {
-    // TODO: update dv
     sip_pkt_t routePkt;
-    routePkt.header.length = 0;
     routePkt.header.type = ROUTE_UPDATE;
     routePkt.header.src_nodeID = topology_getMyNodeID();
     routePkt.header.dst_nodeID = BROADCAST_NODEID;
     if (routePkt.header.src_nodeID < 0) return 0;
     while (1) {
+        pkt_routeupdate_t updatePkt;
+        updatePkt.entryNum = dv->dv[0].entry_num;
+        for (int i = 0; i < updatePkt.entryNum; ++i) {
+            updatePkt.entry[i].cost = dv->dv[0].dvEntry[i].cost;
+            updatePkt.entry[i].nodeID = dv->dv[0].dvEntry[i].nodeID;
+        }
+        routePkt.header.length =/*important, should force cast to unsigned short explicitly*/
+                (unsigned short) (sizeof(unsigned int) + updatePkt.entryNum * sizeof(routeupdate_entry_t));
+        memcpy(routePkt.data, &updatePkt, routePkt.header.length);
         if (son_sendpkt(BROADCAST_NODEID, &routePkt, son_conn) < 0) {
             printf("[Sip] send route update error\n");
             break;
@@ -89,11 +102,79 @@ void *routeupdate_daemon(void *arg) {
 //如果报文是SIP报文,并且目的节点就是本节点,就转发报文给STCP进程. 如果目的节点不是本节点,
 //就根据路由表转发报文给下一跳.如果报文是路由更新报文,就更新距离矢量表和路由表.
 void *pkthandler(void *arg) {
-    // TODO: update dv and routing
-    sip_pkt_t pkt;
+    sip_pkt_t sipPkt;
 
-    while (son_recvpkt(&pkt, son_conn) > 0) {
-        printf("Routing: received a packet from neighbor %d\n", pkt.header.src_nodeID);
+    while (son_recvpkt(&sipPkt, son_conn) > 0) {
+        printf("[Sip]<pkthandler> received a packet, type: %d, neighbor %d\n",
+               sipPkt.header.type, sipPkt.header.src_nodeID);
+        if (sipPkt.header.type == SIP) {
+            if (sipPkt.header.dst_nodeID == topology_getMyNodeID()) {
+                // forward to stcp
+                if (forwardsegToSTCP(stcp_conn, sipPkt.header.src_nodeID, (seg_t *) sipPkt.data) < 0) {
+                    printf("[Sip]<pkthandler:SIP> send to stcp error\n");
+                }
+            } else {
+                // forward to next hop
+                LOCK_ROUTE;
+                int nextHop = routingtable_getnextnode(routingtable, sipPkt.header.dst_nodeID);
+                UNLOCK_ROUTE;
+                if (nextHop < 0) {
+                    printf("[Sip]<pkthandler:SIP> no route to %d\n", sipPkt.header.dst_nodeID);
+                } else {
+                    if (son_sendpkt(nextHop, &sipPkt, son_conn) < 0) {
+                        printf("[Sip]<pkthandler:SIP> send to next hop error\n");
+                    }
+                }
+            }
+        } else if (sipPkt.header.type == ROUTE_UPDATE) {
+            // update dv and routing table
+            pkt_routeupdate_t *updatePkt = (pkt_routeupdate_t *) sipPkt.data;
+            int srcNode = sipPkt.header.src_nodeID;
+            int entryNum = (int) updatePkt->entryNum;
+            LOCK_DV;
+            for (int i = 0; i < entryNum; ++i) {
+                dvtable_setcost(dv, srcNode, (int) updatePkt->entry[i].nodeID, updatePkt->entry[i].cost);
+            }
+            for (int i = 0; i < entryNum; ++i) {
+                int myNode = topology_getMyNodeID();
+                int dstNode = (int) updatePkt->entry[i].nodeID;
+                int cost = (int) updatePkt->entry[i].cost;  // srcNode to dstNode
+                if (dstNode == myNode)continue;
+                //  if srcNode == destNode but cost == INF, it means that this neighbour is no longer reachable,
+                //  we should update self dv(dv[0]) to that neighbor to INF, and if this neighbor appears in rout table,
+                //  we should also remove all entries
+                if (srcNode == dstNode && cost == INFINITE_COST) {
+                    dvtable_setcost(dv, myNode, srcNode, INFINITE_COST);
+                    LOCK_ROUTE;
+                    for (int j = 0; j < dv->dv[0].entry_num; ++j) {
+                        int victim = dv->dv[0].dvEntry[j].nodeID;
+                        if (routingtable_getnextnode(routingtable, victim) == srcNode) {
+                            routingtable_removedestnode(routingtable, victim);
+                            printf("[Sip]<pkthandler:Route> neighbour died, delete route | dest: %d, next: %d\n",
+                                   victim,
+                                   srcNode);
+                            dvtable_setcost(dv, myNode, victim, INFINITE_COST);
+                        }
+                    }
+                    UNLOCK_ROUTE;
+                    continue;
+                }
+                unsigned int oldCost = dvtable_getcost(dv, myNode, dstNode);
+                unsigned int midCost = dvtable_getcost(dv, myNode, srcNode);
+                if (oldCost > cost + midCost) {
+                    // NOTE: as INF is set 999, we don't need to handle overflow issue
+                    dvtable_setcost(dv, myNode, dstNode, cost + midCost);
+                    // srcNode is closer to dstNode, update route table to hop to srcNode
+                    LOCK_ROUTE;
+                    routingtable_setnextnode(routingtable, dstNode, srcNode);
+                    UNLOCK_ROUTE;
+                    printf("[Sip]<pkthandler:Route> add route | dest: %d, next: %d\n", dstNode, srcNode);
+                }
+            }
+            UNLOCK_DV;
+        }
+//        else
+//            assert(0);
     }
     close(son_conn);
     son_conn = -1;
@@ -106,6 +187,12 @@ void sip_stop(int type) {
     //你需要编写这里的代码.
     // TODO: do frees
     if (son_conn > 0)close(son_conn);
+    pthread_mutex_destroy(dv_mutex);
+    pthread_mutex_destroy(routingtable_mutex);
+    free(dv_mutex);
+    free(routingtable_mutex);
+    dvtable_destroy(dv);
+    routingtable_destroy(routingtable);
     exit(9);
 }
 
@@ -115,8 +202,41 @@ void sip_stop(int type) {
 //当本地STCP进程断开连接时, 这个函数等待下一个STCP进程的连接.
 void waitSTCP(void) {
     //你需要编写这里的代码.
-    // TODO
-    return;
+    struct sockaddr_in cliAddr, servAddr;
+    socklen_t clilen = sizeof(cliAddr);
+    bzero(&servAddr, sizeof servAddr);
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(SIP_PORT);
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    // get socket and connect
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (bind(socket_fd, (struct sockaddr *) &servAddr, sizeof(servAddr)) == -1) {
+        perror("[SIP]<waitSTCP> bind tcp socket error\n");
+    }
+    if (listen(socket_fd, 1024) == -1) {
+        perror("[SIP]<waitSTCP> tcp listen error\n");
+    }
+    stcp_conn = accept(socket_fd, (struct sockaddr *) &cliAddr, &clilen);
+    if (stcp_conn < 0) {
+        perror("[SIP]<waitSTCP> accept tcp error\n");
+        return;
+    }
+
+    seg_t seg;
+    int dstNodeID;
+    sip_pkt_t sipPkt;
+    while (1) {
+        if (getsegToSend(stcp_conn, &dstNodeID, &seg) < 0) {
+            printf("[SIP]<waitSTCP> error get packet from STCP\n");
+            sleep(5);
+        }
+        sipPkt.header.src_nodeID = topology_getMyNodeID();
+        sipPkt.header.dst_nodeID = dstNodeID;
+        sipPkt.header.type = SIP;
+        sipPkt.header.length = sizeof(seg.header) + seg.header.length;
+        memcpy(sipPkt.data, &seg, sipPkt.header.length);
+        son_sendpkt(routingtable_getnextnode(routingtable, dstNodeID), &sipPkt, son_conn);
+    }
 }
 
 int main(int argc, char *argv[]) {
