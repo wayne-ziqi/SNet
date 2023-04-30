@@ -105,7 +105,7 @@ void *pkthandler(void *arg) {
     sip_pkt_t sipPkt;
 
     while (son_recvpkt(&sipPkt, son_conn) > 0) {
-        printf("[Sip]<pkthandler> received a packet, type: %d, neighbor %d\n",
+        printf("[Sip]<pkthandler> received a packet, type: %d, srcNode: %d\n",
                sipPkt.header.type, sipPkt.header.src_nodeID);
         if (sipPkt.header.type == SIP) {
             if (sipPkt.header.dst_nodeID == topology_getMyNodeID()) {
@@ -207,35 +207,46 @@ void waitSTCP(void) {
     bzero(&servAddr, sizeof servAddr);
     servAddr.sin_family = AF_INET;
     servAddr.sin_port = htons(SIP_PORT);
-    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    inet_pton(AF_INET, "127.0.0.1", &servAddr.sin_addr);
     // get socket and connect
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (bind(socket_fd, (struct sockaddr *) &servAddr, sizeof(servAddr)) == -1) {
-        perror("[SIP]<waitSTCP> bind tcp socket error\n");
+    if (bind(socket_fd, (struct sockaddr *) &servAddr, sizeof(servAddr)) < 0) {
+        perror("[Sip]<waitSTCP> bind tcp socket error\n");
     }
-    if (listen(socket_fd, 1024) == -1) {
-        perror("[SIP]<waitSTCP> tcp listen error\n");
+    if (listen(socket_fd, 1024) < 0) {
+        perror("[Sip]<waitSTCP> tcp listen error\n");
     }
     stcp_conn = accept(socket_fd, (struct sockaddr *) &cliAddr, &clilen);
     if (stcp_conn < 0) {
-        perror("[SIP]<waitSTCP> accept tcp error\n");
+        perror("[Sip]<waitSTCP> accept tcp error\n");
         return;
     }
 
+    printf("[Sip]<waitSTCP> connected to SIP\n");
     seg_t seg;
     int dstNodeID;
     sip_pkt_t sipPkt;
     while (1) {
         if (getsegToSend(stcp_conn, &dstNodeID, &seg) < 0) {
-            printf("[SIP]<waitSTCP> error get packet from STCP\n");
+            printf("[Sip]<waitSTCP> error get packet from STCP\n");
             sleep(5);
+            continue;
         }
+        printf("[Sip]<waitSTCP> sip get a seg from stcp | type: %s, dstNode: %d\n",
+               seg_type_str(seg.header.type), dstNodeID);
         sipPkt.header.src_nodeID = topology_getMyNodeID();
         sipPkt.header.dst_nodeID = dstNodeID;
         sipPkt.header.type = SIP;
-        sipPkt.header.length = sizeof(seg.header) + seg.header.length;
+        sipPkt.header.length = sizeof(stcp_hdr_t) + seg.header.length;
         memcpy(sipPkt.data, &seg, sipPkt.header.length);
-        son_sendpkt(routingtable_getnextnode(routingtable, dstNodeID), &sipPkt, son_conn);
+        assert(dstNodeID >= 0);
+        int nextNode = routingtable_getnextnode(routingtable, dstNodeID);
+        if (nextNode < 0) {
+            printf("[Sip]<waitSTCP> next hop for %d doesn't exist\n", dstNodeID);
+        } else {
+            printf("[Sip]<waitSTCP> routing to: %d\n", nextNode);
+            son_sendpkt(nextNode, &sipPkt, son_conn);
+        }
     }
 }
 

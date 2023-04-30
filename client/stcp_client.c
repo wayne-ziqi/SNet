@@ -140,6 +140,7 @@ int stcp_client_connect(int sockfd, int nodeID, unsigned int server_port) {
         return -3;
     }
     entry->server_portNum = server_port;
+    entry->server_nodeID = nodeID;
     // make a syn seg
     seg_t *synseg = create_seg(entry->client_portNum, server_port,
                                SYN, entry->next_seqNum, 0, 0, 0, NULL);
@@ -298,7 +299,6 @@ void *seghandler(void *arg) {
             case SYNACK: {
                 if (tcb->state == CONNECTED)continue;
                 assert(tcb->state == SYNSENT);
-                tcb->server_nodeID = srcNodeID;
                 tcb->state = CONNECTED;
                 break;
             }

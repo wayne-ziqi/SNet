@@ -53,62 +53,62 @@ void disconnectToSIP(int sip_conn) {
 }
 
 int main(void) {
-	//用于丢包率的随机数种子
-	srand(time(NULL));
+    //用于丢包率的随机数种子
+    srand(time(NULL));
 
-	//连接到SIP进程并获得TCP套接字描述符
-	int sip_conn = connectToSIP();
-	if(sip_conn<0) {
-		printf("can not connect to the local SIP process\n");
-	}
+    //连接到SIP进程并获得TCP套接字描述符
+    int sip_conn = connectToSIP();
+    if (sip_conn < 0) {
+        printf("can not connect to the local SIP process\n");
+    }
 
-	//初始化STCP服务器
-	stcp_server_init(sip_conn);
+    //初始化STCP服务器
+    stcp_server_init(sip_conn);
 
-	//在端口SERVERPORT1上创建STCP服务器套接字 
-	int sockfd= stcp_server_sock(SERVERPORT1);
-	if(sockfd<0) {
-		printf("can't create stcp server\n");
-		exit(1);
-	}
-	//监听并接受来自STCP客户端的连接 
-	stcp_server_accept(sockfd);
+    //在端口SERVERPORT1上创建STCP服务器套接字
+    int sockfd = stcp_server_sock(SERVERPORT1);
+    if (sockfd < 0) {
+        printf("can't create stcp server\n");
+        exit(1);
+    }
+    //监听并接受来自STCP客户端的连接
+    stcp_server_accept(sockfd);
 
-	//在端口SERVERPORT2上创建另一个STCP服务器套接字
-	int sockfd2= stcp_server_sock(SERVERPORT2);
-	if(sockfd2<0) {
-		printf("can't create stcp server\n");
-		exit(1);
-	}
-	//监听并接受来自STCP客户端的连接 
-	stcp_server_accept(sockfd2);
+    //在端口SERVERPORT2上创建另一个STCP服务器套接字
+    int sockfd2 = stcp_server_sock(SERVERPORT2);
+    if (sockfd2 < 0) {
+        printf("can't create stcp server\n");
+        exit(1);
+    }
+    //监听并接受来自STCP客户端的连接
+    stcp_server_accept(sockfd2);
 
-	char buf1[6];
-	char buf2[7];
-	int i;
-	//接收来自第一个连接的字符串
-	for(i=0;i<5;i++) {
-		stcp_server_recv(sockfd,buf1,6);
-		printf("recv string: %s from connection 1\n",buf1);
-	}
-	//接收来自第二个连接的字符串
-	for(i=0;i<5;i++) {
-		stcp_server_recv(sockfd2,buf2,7);
-		printf("recv string: %s from connection 2\n",buf2);
-	}
+    char buf1[6];
+    char buf2[7];
+    int i;
+    //接收来自第一个连接的字符串
+    for (i = 0; i < 5; i++) {
+        stcp_server_recv(sockfd, buf1, 6);
+        printf("recv string: %s from connection 1\n", buf1);
+    }
+    //接收来自第二个连接的字符串
+    for (i = 0; i < 5; i++) {
+        stcp_server_recv(sockfd2, buf2, 7);
+        printf("recv string: %s from connection 2\n", buf2);
+    }
 
-	sleep(WAITTIME);
+    sleep(WAITTIME);
 
-	//关闭STCP服务器 
-	if(stcp_server_close(sockfd)<0) {
-		printf("can't destroy stcp server\n");
-		exit(1);
-	}				
-	if(stcp_server_close(sockfd2)<0) {
-		printf("can't destroy stcp server\n");
-		exit(1);
-	}				
+    //关闭STCP服务器
+    if (stcp_server_close(sockfd) < 0) {
+        printf("can't destroy stcp server\n");
+        exit(1);
+    }
+    if (stcp_server_close(sockfd2) < 0) {
+        printf("can't destroy stcp server\n");
+        exit(1);
+    }
 
-	//断开与SIP进程之间的连接
-	disconnectToSIP(sip_conn);
+    //断开与SIP进程之间的连接
+    disconnectToSIP(sip_conn);
 }

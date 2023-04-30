@@ -50,6 +50,8 @@ typedef struct sendsegargument {
 
 long now_nano(void);
 
+const char *seg_type_str(int type);
+
 seg_t *
 create_seg(unsigned int src_port, unsigned int dst_port,
            unsigned short type, unsigned int seq_num,

@@ -55,13 +55,13 @@
         return noerr;\
 }}
 
-long now_nano(void){
+long now_nano(void) {
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     return now.tv_sec * 1000000000 + now.tv_nsec;
 }
 
-static inline const char *seg_type_str(int type) {
+inline const char *seg_type_str(int type) {
     switch (type) {
         case SYN:
             return "SYN";
@@ -142,12 +142,14 @@ int sip_recvseg(int sip_conn, int *src_nodeID, seg_t *segPtr) {
     rd = recv(sip_conn, &segPtr->header, sizeof(stcp_hdr_t), 0);
     checkrd(rd, -1, printf("[SIP]<sip_recvseg> error receive header\n"))
     unsigned short data_len = segPtr->header.length;
-    rd = recv(sip_conn, &segPtr->data, data_len, 0);
-    if (data_len != 0) checkrd(rd, -1, printf("[SIP]<sip_recvseg> error receive data\n"))
+    if (data_len > 0) {
+        rd = recv(sip_conn, &segPtr->data, data_len, 0);
+        checkrd(rd, -1, printf("[SIP]<sip_recvseg> error receive data\n"))
+    }
     RCV_END(sip_conn, -1, printf("[SIP]<sip_recvseg> error receive suffix\n"))
     // simulate busy network
     if (seglost(segPtr) == 1) {
-        printf("[Son] packet (seq: %u, ack: %u) is dropped\n", segPtr->header.seq_num,
+        printf("[Son] \x1B[33packet (seq: %u, ack: %u) is dropped\x1B[0m\n", segPtr->header.seq_num,
                segPtr->header.ack_num);
         return 1;
     }
@@ -156,7 +158,7 @@ int sip_recvseg(int sip_conn, int *src_nodeID, seg_t *segPtr) {
            segPtr->header.src_port, *src_nodeID
     );
     if (checkchecksum(segPtr, (int) sizeof(stcp_hdr_t) + data_len) < 0) {
-        printf("[Son] error checksum, packet (seq: %u, ack: %u) is dropped\n",
+        printf("[Son] \x1B[33error checksum\x1B[0m, packet (seq: %u, ack: %u) is dropped\n",
                segPtr->header.seq_num, segPtr->header.ack_num);
         return 1;
     }
