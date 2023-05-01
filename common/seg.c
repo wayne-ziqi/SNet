@@ -13,7 +13,7 @@
 #define SUFFIX_LEN 2
 
 #define checkrd(rd_len, noerr, print_error) { \
-    if (rd_len < 0) {               \
+    if (rd_len <= 0) {               \
         print_error; \
         return noerr;                          \
     }                                       \
@@ -149,7 +149,7 @@ int sip_recvseg(int sip_conn, int *src_nodeID, seg_t *segPtr) {
     RCV_END(sip_conn, -1, printf("[SIP]<sip_recvseg> error receive suffix\n"))
     // simulate busy network
     if (seglost(segPtr) == 1) {
-        printf("[Son] \x1B[33packet (seq: %u, ack: %u) is dropped\x1B[0m\n", segPtr->header.seq_num,
+        printf("[Son] \x1B[33mpacket (seq: %u, ack: %u) is dropped\x1B[0m\n", segPtr->header.seq_num,
                segPtr->header.ack_num);
         return 1;
     }
@@ -158,7 +158,7 @@ int sip_recvseg(int sip_conn, int *src_nodeID, seg_t *segPtr) {
            segPtr->header.src_port, *src_nodeID
     );
     if (checkchecksum(segPtr, (int) sizeof(stcp_hdr_t) + data_len) < 0) {
-        printf("[Son] \x1B[33error checksum\x1B[0m, packet (seq: %u, ack: %u) is dropped\n",
+        printf("[Son] \x1B[33merror checksum\x1B[0m, packet (seq: %u, ack: %u) is dropped\n",
                segPtr->header.seq_num, segPtr->header.ack_num);
         return 1;
     }

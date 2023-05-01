@@ -13,7 +13,7 @@
 
 
 #define checkrd(rd_len, noerr, print_error) { \
-    if (rd_len < 0) {               \
+    if (rd_len <= 0) {               \
         print_error; \
         return noerr;                          \
     }                                       \
@@ -53,7 +53,8 @@
     if (strcmp(suf, SIP_SUFFIX) != 0) {\
         printf("[WARN] the packet is invalid\n");\
         return noerr;\
-}}
+    }                                             \
+}
 
 
 // son_sendpkt()由SIP进程调用, 其作用是要求SON进程将报文发送到重叠网络中. SON进程和SIP进程通过一个本地TCP连接互连.
@@ -70,7 +71,7 @@ int son_sendpkt(int nextNodeID, sip_pkt_t *pkt, int son_conn) {
         printf("[Sip]<son_sendpkt> send nextNodeID to SON error\n");
         return -1;
     }
-    if (send(son_conn, pkt, sizeof(pkt->header) + pkt->header.length, 0) < 0) {
+    if (send(son_conn, pkt, sizeof(sip_hdr_t) + pkt->header.length, 0) < 0) {
         printf("[Sip]<son_sendpkt> send packet to SON error\n");
         return -1;
     }
@@ -98,7 +99,7 @@ int son_recvpkt(sip_pkt_t *pkt, int son_conn) {
         rd = recv(son_conn, &pkt->data, data_len, 0);
         checkrd(rd, -1, printf("[Sip]<son_recvpkt> receive data error\n"))
     }
-    RCV_END(son_conn, -1, printf("[Sip]<son_recvpkt> receive suffix error\n"))
+    RCV_END(son_conn, 2, printf("[Sip]<son_recvpkt> receive suffix error\n"))
     return 1;
 }
 
@@ -116,7 +117,7 @@ int getpktToSend(sip_pkt_t *pkt, int *nextNode, int sip_conn) {
     RCV_BEGIN(sip_conn, -1, printf("[Son]<getpktToSend> can't receive prefix\n"))
     ssize_t rd = recv(sip_conn, nextNode, sizeof(int), 0);
     checkrd(rd, -1, printf("[Son]<getpktToSend> can't receive nextNode\n"))
-    rd = recv(sip_conn, &pkt->header, sizeof(pkt->header), 0);
+    rd = recv(sip_conn, &pkt->header, sizeof(sip_hdr_t), 0);
     checkrd(rd, -1, printf("[Son]<getpktToSend> can't receive packet header\n"))
     int data_len = pkt->header.length;
     if (data_len != 0) {
@@ -137,7 +138,7 @@ int forwardpktToSIP(sip_pkt_t *pkt, int sip_conn) {
         printf("[Son]<forwardpktToSIP> send prefix to SIP error\n");
         return -1;
     }
-    if (send(sip_conn, pkt, sizeof(pkt->header) + pkt->header.length, MSG_NOSIGNAL) < 0) {
+    if (send(sip_conn, pkt, sizeof(sip_hdr_t) + pkt->header.length, MSG_NOSIGNAL) < 0) {
         printf("[Son]<forwardpktToSIP> send packet to SIP error\n");
         return -1;
     }
@@ -157,7 +158,7 @@ int sendpkt(sip_pkt_t *pkt, int conn) {
         printf("[Son]<sendpkt> send packet to neighbor error, connection %d\n", conn);
         return -1;
     }
-    if (send(conn, pkt, sizeof(pkt->header) + pkt->header.length, MSG_NOSIGNAL) < 0) {
+    if (send(conn, pkt, sizeof(sip_hdr_t) + pkt->header.length, MSG_NOSIGNAL) < 0) {
         printf("[Son]<sendpkt> send packet to neighbor error, connection %d\n", conn);
         return -1;
     }
@@ -186,6 +187,6 @@ int recvpkt(sip_pkt_t *pkt, int conn) {
         rd = recv(conn, &pkt->data, data_len, 0);
         checkrd(rd, -1, printf("[Son]<recvpkt> can't receive data\n"))
     }
-    RCV_END(conn, -1, printf("[Son]<recvpkt> can't receive suffix\n"))
+    RCV_END(conn, 2, printf("[Son]<recvpkt> can't receive suffix\n"))
     return 1;
 }

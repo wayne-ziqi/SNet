@@ -27,7 +27,7 @@
 #include "routingtable.h"
 
 //SIP层等待这段时间让SIP路由协议建立路由路径. 
-#define SIP_WAITTIME 60
+#define SIP_WAITTIME 30
 
 /**************************************************************/
 //声明全局变量
@@ -90,7 +90,7 @@ void *routeupdate_daemon(void *arg) {
                 (unsigned short) (sizeof(unsigned int) + updatePkt.entryNum * sizeof(routeupdate_entry_t));
         memcpy(routePkt.data, &updatePkt, routePkt.header.length);
         if (son_sendpkt(BROADCAST_NODEID, &routePkt, son_conn) < 0) {
-            printf("[Sip] send route update error\n");
+            printf("[Sip]<routeupdate_daemon> send route update error\n");
             break;
         }
         sleep(ROUTEUPDATE_INTERVAL);
@@ -104,9 +104,12 @@ void *routeupdate_daemon(void *arg) {
 void *pkthandler(void *arg) {
     sip_pkt_t sipPkt;
 
-    while (son_recvpkt(&sipPkt, son_conn) > 0) {
-        printf("[Sip]<pkthandler> received a packet, type: %d, srcNode: %d\n",
-               sipPkt.header.type, sipPkt.header.src_nodeID);
+    while (1) {
+        int rcv = son_recvpkt(&sipPkt, son_conn);
+        if (rcv < 0) break;
+        if (rcv == 2) continue;
+        printf("[Sip]<pkthandler> received from son | type: %d, src: %d, dst: %d\n",
+               sipPkt.header.type, sipPkt.header.src_nodeID, sipPkt.header.dst_nodeID);
         if (sipPkt.header.type == SIP) {
             if (sipPkt.header.dst_nodeID == topology_getMyNodeID()) {
                 // forward to stcp
@@ -172,9 +175,8 @@ void *pkthandler(void *arg) {
                 }
             }
             UNLOCK_DV;
-        }
-//        else
-//            assert(0);
+        } else
+            assert(0);
     }
     close(son_conn);
     son_conn = -1;
@@ -240,7 +242,9 @@ void waitSTCP(void) {
         sipPkt.header.length = sizeof(stcp_hdr_t) + seg.header.length;
         memcpy(sipPkt.data, &seg, sipPkt.header.length);
         assert(dstNodeID >= 0);
+        LOCK_ROUTE;
         int nextNode = routingtable_getnextnode(routingtable, dstNodeID);
+        UNLOCK_ROUTE;
         if (nextNode < 0) {
             printf("[Sip]<waitSTCP> next hop for %d doesn't exist\n", dstNodeID);
         } else {
@@ -289,6 +293,7 @@ int main(int argc, char *argv[]) {
     printf("SIP layer is started...\n");
     printf("waiting for routes to be established\n");
     sleep(SIP_WAITTIME);
+    dvtable_print(dv);
     routingtable_print(routingtable);
 
     //等待来自STCP进程的连接

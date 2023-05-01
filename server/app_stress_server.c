@@ -26,7 +26,7 @@
 #define CLIENTPORT1 87
 #define SERVERPORT1 88
 //在接收的文件数据被保存后, 服务器等待15秒, 然后关闭连接.
-#define WAITTIME 15
+#define WAITTIME 20
 
 //这个函数连接到本地SIP进程的端口SIP_PORT. 如果TCP连接失败, 返回-1. 连接成功, 返回TCP套接字描述符, STCP将使用该描述符发送段.
 int connectToSIP(void) {
@@ -78,6 +78,7 @@ int main(void) {
 	//首先接收文件长度, 然后接收文件数据
 	int fileLen;
 	stcp_server_recv(sockfd,&fileLen,sizeof(int));
+    printf("file length: %d\n", fileLen);
 	char* buf = (char*) malloc(fileLen);
 	stcp_server_recv(sockfd,buf,fileLen);
 

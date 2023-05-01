@@ -127,13 +127,10 @@ void *listen_to_neighbor(void *arg) {
     nbr_entry_t *nbr = arg;
     sip_pkt_t sipPkt;
     while (1) {
-        if (recvpkt(&sipPkt, nbr->conn) < 0) {
+        int rcv = recvpkt(&sipPkt, nbr->conn);
+        if (rcv < 0) {
             printf("[Son]<listen_to_neighbor> neighbor offline, node: %d\n", nbr->nodeID);
             // neighbour is offline, kill this thread
-            wait_nt(nt);
-            removeEntry(nt, nbr);
-            leave_nt(nt);
-            // TODO: should we generate an sip_pkt to inform sip?
             pkt_routeupdate_t nbrLoss;
             nbrLoss.entryNum = 1;
             nbrLoss.entry[0].nodeID = nbr->nodeID;
@@ -145,7 +142,13 @@ void *listen_to_neighbor(void *arg) {
                                                      nbrLoss.entryNum * sizeof(routeupdate_entry_t));
             memcpy(sipPkt.data, &nbrLoss, sipPkt.header.length);
             forwardpktToSIP(&sipPkt, sip_conn);
+            wait_nt(nt);
+            removeEntry(nt, nbr);
+            leave_nt(nt);
             break;
+        } else if (rcv == 2) {
+            // invalid packet
+            continue;
         }
         if (forwardpktToSIP(&sipPkt, sip_conn) < 0) {
             continue;
@@ -187,7 +190,8 @@ void waitSIP(void) {
     while (1) {
         if (getpktToSend(&sipPkt, &nextNode, sip_conn) < 0) {
             printf("[Son]<waitSIP> error receive from SIP\n");
-            break;
+            sleep(5);
+            continue;
         }
         if (nextNode == BROADCAST_NODEID) {
             wait_nt(nt);
