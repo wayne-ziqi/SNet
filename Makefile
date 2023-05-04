@@ -1,4 +1,4 @@
-all: son/son sip/sip client/app_simple_client server/app_simple_server client/app_stress_client server/app_stress_server   
+all: son/son sip/sip sip_ospf/sip client/app_simple_client server/app_simple_server client/app_stress_client server/app_stress_server
 
 common/pkt.o: common/pkt.c common/pkt.h common/constants.h
 	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -c common/pkt.c -o common/pkt.o
@@ -16,6 +16,11 @@ sip/routingtable.o: sip/routingtable.c
 	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -c sip/routingtable.c -o sip/routingtable.o
 sip/sip: common/pkt.o common/seg.o topology/topology.o sip/nbrcosttable.o sip/dvtable.o sip/routingtable.o sip/sip.c 
 	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -pthread sip/nbrcosttable.o sip/dvtable.o sip/routingtable.o common/pkt.o common/seg.o topology/topology.o sip/sip.c -o sip/sip
+
+sip_ospf/routingtable.o: sip_ospf/routingtable.c
+	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -c sip_ospf/routingtable.c -o sip_ospf/routingtable.o
+sip_ospf/sip: common/pkt.o common/seg.o topology/topology.o sip_ospf/routingtable.o sip_ospf/sip.c
+	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -pthread sip_ospf/routingtable.o common/pkt.o common/seg.o topology/topology.o sip_ospf/sip.c -o sip_ospf/sip
 client/app_simple_client: client/app_simple_client.c common/seg.o client/stcp_client.o topology/topology.o 
 	gcc -Wall -D_GNU_SOURCE -pedantic -std=c99 -g -pthread client/app_simple_client.c common/seg.o client/stcp_client.o topology/topology.o -o client/app_simple_client
 client/app_stress_client: client/app_stress_client.c common/seg.o client/stcp_client.o topology/topology.o 
@@ -37,7 +42,9 @@ clean:
 	rm -rf son/*.o
 	rm -rf son/son
 	rm -rf sip/*.o
-	rm -rf sip/sip 
+	rm -rf sip_ospf/*.o
+	rm -rf sip/sip
+	rm -rf sip_ospf/sip
 	rm -rf client/*.o
 	rm -rf server/*.o
 	rm -rf client/app_simple_client
