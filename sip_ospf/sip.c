@@ -33,9 +33,6 @@
 int son_conn;            //到重叠网络的连接
 int stcp_conn;            //到STCP的连接
 
-#define UPDATE_HOP_FLOOR 1020
-#define UPDATE_HOP_CEIL 1024
-
 routingtable_t *routingtable;        //路由表
 pthread_mutex_t *routingtable_mutex;    //路由表互斥量
 
@@ -107,20 +104,19 @@ void *pkthandler(void *arg) {
             int srcNode = sipPkt.header.src_nodeID;
             assert(pktRouteupdate->entryNum == 1);
             for (int i = 0; i < pktRouteupdate->entryNum; ++i) {
-                unsigned int dstNode = pktRouteupdate->entry[i].nodeID;
-                assert(pktRouteupdate->entry[i].cost == INFINITE_COST);
-                LOCK_ROUTE;
-                removeNode(routingtable, (int) dstNode);
-                UNLOCK_ROUTE;
-                // note: we use the same packet to update all nodes, the srcNode ID is used as hop limit
-                if (srcNode == dstNode) {   //received from the disconnected node
-                    sipPkt.header.src_nodeID = UPDATE_HOP_CEIL;
-                    son_sendpkt(BROADCAST_NODEID, &sipPkt, son_conn);
-                } else if (srcNode > UPDATE_HOP_FLOOR) {
-                    sipPkt.header.src_nodeID = srcNode - 1;
-                    son_sendpkt(BROADCAST_NODEID, &sipPkt, son_conn);
-                } else {
-                    routingtable_print(routingtable);
+                int dstNode = (int) pktRouteupdate->entry[i].nodeID;
+                if (dstNode < 0) {   //received from the disconnected node
+                    assert(pktRouteupdate->entry[i].cost == INFINITE_COST);
+                    LOCK_ROUTE;
+                    removeNode(routingtable, (int) srcNode);
+                    UNLOCK_ROUTE;
+                    // note: we use the same packet to update all nodes, the srcNode ID is used as hop limit
+                    dstNode++;
+                    pktRouteupdate->entry[i].nodeID = dstNode;
+                    if (dstNode < UPDATE_HOP_CEIL)
+                        son_sendpkt(BROADCAST_NODEID, &sipPkt, son_conn);
+                    else
+                        routingtable_print(routingtable);
                 }
             }
         } else
@@ -135,6 +131,7 @@ void *pkthandler(void *arg) {
 //它关闭所有连接, 释放所有动态分配的内存.
 void sip_stop(int type) {
     //你需要编写这里的代码.
+
     if (son_conn > 0)close(son_conn);
     pthread_mutex_destroy(routingtable_mutex);
     free(routingtable_mutex);
@@ -176,6 +173,9 @@ void waitSTCP(void) {
         if (getsegToSend(stcp_conn, &dstNodeID, &seg) < 0) {
             printf("[Sip]<waitSTCP> error get packet from STCP\n");
             sleep(5);
+            stcp_conn = accept(socket_fd, (struct sockaddr *) &cliAddr, &clilen);
+            if (stcp_conn > 0)
+                printf("[Sip]<waitSTCP> connected to SIP\n");
             continue;
         }
         printf("[Sip]<waitSTCP> sip get a seg from stcp | type: %s, dstNode: %d\n",

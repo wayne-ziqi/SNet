@@ -131,16 +131,7 @@ void *listen_to_neighbor(void *arg) {
         if (rcv < 0) {
             printf("[Son]<listen_to_neighbor> neighbor offline, node: %d\n", nbr->nodeID);
             // neighbour is offline, kill this thread
-            pkt_routeupdate_t nbrLoss;
-            nbrLoss.entryNum = 1;
-            nbrLoss.entry[0].nodeID = nbr->nodeID;
-            nbrLoss.entry[0].cost = INFINITE_COST;
-            sipPkt.header.type = ROUTE_UPDATE;
-            sipPkt.header.src_nodeID = nbr->nodeID;
-            sipPkt.header.dst_nodeID = BROADCAST_NODEID;
-            sipPkt.header.length = (unsigned short) (sizeof(nbrLoss.entryNum) +
-                                                     nbrLoss.entryNum * sizeof(routeupdate_entry_t));
-            memcpy(sipPkt.data, &nbrLoss, sipPkt.header.length);
+            makeNodeFailSipPkt(&sipPkt, nbr->nodeID);
             forwardpktToSIP(&sipPkt, sip_conn);
             wait_nt(nt);
             removeEntry(nt, nbr);
@@ -151,6 +142,7 @@ void *listen_to_neighbor(void *arg) {
             continue;
         }
         if (forwardpktToSIP(&sipPkt, sip_conn) < 0) {
+            sleep(5);
             continue;
         }
     }
@@ -187,9 +179,27 @@ void waitSIP(void) {
     printf("[Son] sip connected\n");
     sip_pkt_t sipPkt;
     int nextNode;
+    int needSendFail = 1;
     while (1) {
         if (getpktToSend(&sipPkt, &nextNode, sip_conn) < 0) {
             printf("[Son]<waitSIP> error receive from SIP\n");
+            if (needSendFail == 1) {
+                printf("[Son]<waitSIP> sending fail packet to neighbors\n");
+                makeNodeFailSipPkt(&sipPkt, topology_getMyNodeID());
+                wait_nt(nt);
+                iterate_nbr(nt, nbr) {
+                    if (sendpkt(&sipPkt, nbr->conn) < 0) {
+                        printf("[Son]<waitSIP> neighbor offline: Node %d\n", nbr->nodeID);
+                    }
+                }
+                leave_nt(nt);
+                needSendFail = 0;
+            }
+            sip_conn = accept(socket_fd, (struct sockaddr *) &cliAddr, &clilen);
+            if (sip_conn > 0) {
+                printf("[Son]<waitSIP> sip connected\n");
+                needSendFail = 1;
+            }
             sleep(5);
             continue;
         }

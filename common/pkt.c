@@ -56,6 +56,20 @@
     }                                             \
 }
 
+// make connection fail packet
+void makeNodeFailSipPkt(sip_pkt_t *sipPkt, int loseID) {
+    pkt_routeupdate_t nodeLoss;
+    nodeLoss.entryNum = 1;
+    nodeLoss.entry[0].nodeID = UPDATE_HOP_FLOOR;
+    nodeLoss.entry[0].cost = INFINITE_COST;
+    sipPkt->header.type = ROUTE_UPDATE;
+    sipPkt->header.src_nodeID = loseID;
+    sipPkt->header.dst_nodeID = BROADCAST_NODEID;
+    sipPkt->header.length = (unsigned short) (sizeof(nodeLoss.entryNum) +
+                                              nodeLoss.entryNum * sizeof(routeupdate_entry_t));
+    memcpy(sipPkt->data, &nodeLoss, sipPkt->header.length);
+}
+
 
 // son_sendpkt()由SIP进程调用, 其作用是要求SON进程将报文发送到重叠网络中. SON进程和SIP进程通过一个本地TCP连接互连.
 // 在son_sendpkt()中, 报文及其下一跳的节点ID被封装进数据结构sendpkt_arg_t, 并通过TCP连接发送给SON进程. 

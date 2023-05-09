@@ -45,6 +45,11 @@ typedef struct sendpktargument {
   sip_pkt_t pkt;         //要发送的报文
 } sendpkt_arg_t;
 
+#define UPDATE_HOP_FLOOR (-1024)
+#define UPDATE_HOP_CEIL (-1020)
+
+void makeNodeFailSipPkt(sip_pkt_t *sipPkt, int loseID);
+
 // son_sendpkt()由SIP进程调用, 其作用是要求SON进程将报文发送到重叠网络中. SON进程和SIP进程通过一个本地TCP连接互连.
 // 在son_sendpkt()中, 报文及其下一跳的节点ID被封装进数据结构sendpkt_arg_t, 并通过TCP连接发送给SON进程. 
 // 参数son_conn是SIP进程和SON进程之间的TCP连接套接字描述符.

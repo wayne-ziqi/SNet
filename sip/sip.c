@@ -142,13 +142,15 @@ void *pkthandler(void *arg) {
                 int myNode = topology_getMyNodeID();
                 int dstNode = (int) updatePkt->entry[i].nodeID;
                 int cost = (int) updatePkt->entry[i].cost;  // srcNode to dstNode
-                if (dstNode == myNode)continue;
+                if (dstNode == myNode || (dstNode < 0 && srcNode == myNode))continue;
                 //  if srcNode == destNode but cost == INF, it means that this neighbour is no longer reachable,
                 //  we should update self dv(dv[0]) to that neighbor to INF, and if this neighbor appears in rout table,
                 //  we should also remove all entries
-                if (srcNode == dstNode && cost == INFINITE_COST) {
+                if (dstNode < 0) {
+                    int ttl = dstNode;
                     dvtable_setcost(dv, myNode, srcNode, INFINITE_COST);
                     LOCK_ROUTE;
+                    routingtable_removedestnode(routingtable, srcNode);
                     for (int j = 0; j < dv->dv[0].entry_num; ++j) {
                         int victim = dv->dv[0].dvEntry[j].nodeID;
                         if (routingtable_getnextnode(routingtable, victim) == srcNode) {
@@ -156,14 +158,28 @@ void *pkthandler(void *arg) {
                             printf("[Sip]<pkthandler:Route> neighbour died, delete route | dest: %d, next: %d\n",
                                    victim,
                                    srcNode);
-                            dvtable_setcost(dv, myNode, victim, INFINITE_COST);
+                            unsigned int dstCost = nbrcosttable_getcost(nct, victim);
+                            dvtable_setcost(dv, myNode, victim, dstCost);
+                            if (dstCost != INFINITE_COST)
+                                routingtable_setnextnode(routingtable, victim, victim);
                         }
                     }
+                    dvtable_print(dv);
+                    routingtable_print(routingtable);
                     UNLOCK_ROUTE;
+                    if (ttl < UPDATE_HOP_CEIL) {
+                        // send to all neighbors
+                        ++ttl;
+                        updatePkt->entry[i].nodeID = ttl;
+                        son_sendpkt(BROADCAST_NODEID, &sipPkt, son_conn);
+                    }
                     continue;
                 }
                 unsigned int oldCost = dvtable_getcost(dv, myNode, dstNode);
                 unsigned int midCost = dvtable_getcost(dv, myNode, srcNode);
+                if (dstNode == srcNode && midCost == INFINITE_COST) {
+                    midCost = nbrcosttable_getcost(nct, dstNode);    // add a direct link
+                }
                 if (oldCost > cost + midCost) {
                     // NOTE: as INF is set 999, we don't need to handle overflow issue
                     dvtable_setcost(dv, myNode, dstNode, cost + midCost);
@@ -172,6 +188,8 @@ void *pkthandler(void *arg) {
                     routingtable_setnextnode(routingtable, dstNode, srcNode);
                     UNLOCK_ROUTE;
                     printf("[Sip]<pkthandler:Route> add route | dest: %d, next: %d\n", dstNode, srcNode);
+                    dvtable_print(dv);
+                    routingtable_print(routingtable);
                 }
             }
             UNLOCK_DV;
@@ -232,6 +250,9 @@ void waitSTCP(void) {
         if (getsegToSend(stcp_conn, &dstNodeID, &seg) < 0) {
             printf("[Sip]<waitSTCP> error get packet from STCP\n");
             sleep(5);
+            stcp_conn = accept(socket_fd, (struct sockaddr *) &cliAddr, &clilen);
+            if (stcp_conn > 0)
+                printf("[Sip]<waitSTCP> connected to SIP\n");
             continue;
         }
         printf("[Sip]<waitSTCP> sip get a seg from stcp | type: %s, dstNode: %d\n",

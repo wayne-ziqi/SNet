@@ -15,7 +15,7 @@
  */
 static int idMapper[MAX_NODE_NUM];
 
-static int krukGraph[MAX_NODE_NUM][MAX_NODE_NUM];
+static int floydGraph[MAX_NODE_NUM][MAX_NODE_NUM];
 
 static int path[MAX_NODE_NUM][MAX_NODE_NUM];
 
@@ -26,11 +26,11 @@ static inline int getNodeIDIdx(int nodeID) {
     return -1;
 }
 
-void fillPathKruk(void) {
+void fillPathFloyd(void) {
     int nodeNum = topology_getNodeNum();
     for (int i = 0; i < nodeNum; ++i) {
         for (int j = 0; j < nodeNum; ++j) {
-            if (krukGraph[i][j] != INFINITE_COST)
+            if (floydGraph[i][j] != INFINITE_COST)
                 path[i][j] = j;
             else path[i][j] = -1;
         }
@@ -38,8 +38,8 @@ void fillPathKruk(void) {
     for (int k = 0; k < nodeNum; ++k) {
         for (int i = 0; i < nodeNum; ++i) {
             for (int j = 0; j < nodeNum; ++j) {
-                if (krukGraph[i][k] + krukGraph[k][j] < krukGraph[i][j]) {
-                    krukGraph[i][j] = krukGraph[i][k] + krukGraph[k][j];
+                if (floydGraph[i][k] + floydGraph[k][j] < floydGraph[i][j]) {
+                    floydGraph[i][j] = floydGraph[i][k] + floydGraph[k][j];
                     path[i][j] = path[i][k];
                 }
             }
@@ -54,12 +54,12 @@ int getNextHop(int srcID, int dstID) {
     return path[srcIdx][destIdx] == -1 ? -1 : idMapper[path[srcIdx][destIdx]];
 }
 
-void init_krukGraph(void) {
+void init_floydGraph(void) {
     int nodeNum = topology_getNodeNum();
     for (int i = 0; i < nodeNum; ++i) {
         for (int j = 0; j < nodeNum; ++j) {
-            if (i == j)krukGraph[i][j] = 0;
-            else krukGraph[i][j] = INFINITE_COST;
+            if (i == j)floydGraph[i][j] = 0;
+            else floydGraph[i][j] = INFINITE_COST;
         }
     }
     for (int i = 0; i < nodeNum; ++i) {
@@ -69,7 +69,7 @@ void init_krukGraph(void) {
         iterate_topo_nbr(node, nbr) {
             int idx = getNodeIDIdx(nbr->neighbor->hostID);
             if (idx == -1)continue;
-            krukGraph[i][idx] = nbr->cost;
+            floydGraph[i][idx] = nbr->cost;
         }
     }
 }
@@ -86,7 +86,7 @@ inline int makehash(int node) {
 }
 
 void updateRouting(routingtable_t *routingtable) {
-    fillPathKruk();
+    fillPathFloyd();
     int myNode = topology_getMyNodeID();
     int *nodeArray = topology_getNodeArray();
     for (int i = 0; i < topology_getNodeNum(); ++i) {
@@ -102,11 +102,11 @@ void removeNode(routingtable_t *routingtable, int nodeID) {
     int nodeIdx = getNodeIDIdx(nodeID);
     if (nodeIdx == -1)return;
     idMapper[nodeIdx] = -2;
-    init_krukGraph();
+    init_floydGraph();
     int nodeNum = topology_getNodeNum();
     for (int i = 0; i < nodeNum; ++i) {
-        krukGraph[nodeIdx][i] = INFINITE_COST;
-        krukGraph[i][nodeIdx] = INFINITE_COST;
+        floydGraph[nodeIdx][i] = INFINITE_COST;
+        floydGraph[i][nodeIdx] = INFINITE_COST;
     }
     updateRouting(routingtable);
 }
@@ -136,7 +136,7 @@ routingtable_t *routingtable_create(void) {
         idMapper[i] = nodeArray[i];
     }
     free(nodeArray);
-    init_krukGraph();
+    init_floydGraph();
     updateRouting(tab);
     return tab;
 }
